@@ -1,0 +1,67 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tradingapp-postgres
+    environment:
+      POSTGRES_USER: tradingapp
+      POSTGRES_PASSWORD: tradingapp
+      POSTGRES_DB: tradingapp
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tradingapp -d tradingapp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tradingapp
+    # Not exposed publicly; only reachable within the compose network
+
+  redis:
+    image: redis:7-alpine
+    container_name: tradingapp-redis
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tradingapp
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: tradingapp-api
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://tradingapp:tradingapp@postgres:5432/tradingapp
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - tradingapp
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  tradingapp:
+    driver: bridge
